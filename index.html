@@ -28,8 +28,23 @@
         window.onerror = function(message, source, lineno, colno, error) {
           alert("ERROR: " + message + "\nLine: " + lineno);
     };
+        // Function to print errors to the screen
+        function logToScreen(msg) {
+          const box = document.getElementById('screen-console');
+          box.innerHTML += `<div>> ${msg}</div>`;
+          box.scrollTop = box.scrollHeight;
+        }
 
-    // Catch Firebase specific errors
+        // Catch standard code errors
+        window.onerror = (m, s, l) => logToScreen(`CODE ERROR: ${m} at line ${l}`);
+
+        // Catch Firebase specific errors
+        window.onunhandledrejection = (e) => logToScreen(`FIREBASE ERROR: ${e.reason.message}`);
+
+        logToScreen("Debug Mode Active.");
+
+
+        // Catch Firebase specific errors
         window.addEventListener("unhandledrejection", function(event) {
           alert("FIREBASE ERROR: " + event.reason.message);
     });
@@ -98,6 +113,10 @@
             });
             input.value = "";
         };
+        <div id="screen-console" style="background:#000; color:#0f0; font-family:monospace; padding:10px; height:150px; overflow-y:scroll; border-top:5px solid #333;">
+          System Ready... (Errors will appear here)
+        </div>
+
     </script>
 </body>
 </html>
