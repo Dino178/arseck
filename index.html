@@ -1,1 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Classroom Portal v4</title> <!-- Boring name to avoid filters -->
+    <script src="https://accounts.google.com" async defer></script>
+</head>
+<body>
+    <div id="app" style="display:none;">
+        <h1>Dashboard</h1>
+        <button onclick="cloakSite()">Enable Stealth Mode</button>
+        
+        <div id="chat-box" style="height:200px; overflow-y:scroll; border:1px solid #000; margin:10px 0;"></div>
+        <input id="msg" placeholder="Type a message..."><button onclick="send()">Send</button>
+        
+        <hr>
+        <h3>Friends Online</h3>
+        <ul id="friend-list"></ul>
+    </div>
 
+    <div id="login-screen">
+        <button id="login-btn">Sign in with Google</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com";
+        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc } from "https://www.gstatic.com";
+
+        // 1. SETUP - Replace with your Config from Firebase Project Settings
+        const firebaseConfig = {
+          apiKey: "AIzaSyAhXmz78lZyyiEO0q1y55xZP6fYrrXiEP0",
+          authDomain: "arseck.firebaseapp.com",
+          projectId: "arseck",
+          storageBucket: "arseck.firebasestorage.app",
+          messagingSenderId: "48055621631",
+          appId: "1:48055621631:web:402bb61adf52155a90b9ca",
+          measurementId: "G-W4EBXTWH2T"
+
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+        const db = getFirestore();
+        const provider = new GoogleAuthProvider();
+
+        // 2. STEALTH: Open in about:blank to hide from history/extensions
+        window.cloakSite = () => {
+            const win = window.open();
+            const iframe = win.document.createElement('iframe');
+            iframe.style = "position:fixed; top:0; left:0; width:100%; height:100%; border:none;";
+            iframe.src = window.location.href;
+            win.document.body.appendChild(iframe);
+            window.location.replace("https://google.com"); // Leave "decoy" behind
+        };
+
+        // 3. LOGIN LOGIC
+        document.getElementById('login-btn').onclick = () => signInWithPopup(auth, provider);
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+                
+                // SYNC PROFILE & FRIENDS
+                // This automatically creates the "users" collection
+                setDoc(doc(db, "users", user.uid), {
+                    name: user.displayName,
+                    lastSeen: serverTimestamp()
+                }, { merge: true });
+
+                // LOAD CHAT (Automatically creates "global_chat" collection)
+                const q = query(collection(db, "global_chat"), orderBy("timestamp", "asc"));
+                onSnapshot(q, (snap) => {
+                    const box = document.getElementById('chat-box');
+                    box.innerHTML = snap.docs.map(d => `<p><b>${d.data().name}:</b> ${d.data().text}</p>`).join('');
+                    box.scrollTop = box.scrollHeight;
+                });
+            }
+        });
+
+        // 4. SEND MESSAGE
+        window.send = async () => {
+            const input = document.getElementById('msg');
+            if (!input.value) return;
+            await addDoc(collection(db, "global_chat"), {
+                name: auth.currentUser.displayName,
+                text: input.value,
+                timestamp: serverTimestamp()
+            });
+            input.value = "";
+        };
+    </script>
+</body>
+</html>
