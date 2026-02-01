@@ -25,6 +25,15 @@
         import { initializeApp } from "https://www.gstatic.com";
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com";
         import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc } from "https://www.gstatic.com";
+        window.onerror = function(message, source, lineno, colno, error) {
+          alert("ERROR: " + message + "\nLine: " + lineno);
+    };
+
+    // Catch Firebase specific errors
+        window.addEventListener("unhandledrejection", function(event) {
+          alert("FIREBASE ERROR: " + event.reason.message);
+    });
+
 
         // 1. SETUP - Replace with your Config from Firebase Project Settings
         const firebaseConfig = {
