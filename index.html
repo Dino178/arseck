@@ -1,122 +1,195 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Classroom Portal v4</title> <!-- Boring name to avoid filters -->
-    <script src="https://accounts.google.com" async defer></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Login & Firestore Chat</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; background-color: #f4f4f9;}
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 5px; border: none; border-radius: 4px; background-color: #4285F4; color: white;}
+        button:hover { background-color: #357ae8; }
+        
+        #login-screen { margin-top: 50px; text-align: center; }
+        #app-interface { display: none; width: 100%; max-width: 600px; }
+        
+        .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        
+        #chat-box { border: 1px solid #ddd; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; background: #fafafa; }
+        .message { margin-bottom: 8px; padding: 8px; background: #e9ecef; border-radius: 5px; }
+        .my-message { background: #d1e7dd; text-align: right; }
+        
+        input[type="text"] { width: 70%; padding: 10px; font-size: 16px; }
+    </style>
 </head>
 <body>
-    <div id="app" style="display:none;">
-        <h1>Dashboard</h1>
-        <button onclick="cloakSite()">Enable Stealth Mode</button>
-        
-        <div id="chat-box" style="height:200px; overflow-y:scroll; border:1px solid #000; margin:10px 0;"></div>
-        <input id="msg" placeholder="Type a message..."><button onclick="send()">Send</button>
-        
-        <hr>
-        <h3>Friends Online</h3>
-        <ul id="friend-list"></ul>
-    </div>
 
     <div id="login-screen">
+        <h1>Welcome</h1>
+        <p>Sign in to view your profile and chat.</p>
         <button id="login-btn">Sign in with Google</button>
     </div>
 
+    <div id="app-interface">
+        
+        <div class="section">
+            <h2>👤 My Profile</h2>
+            <p><strong>Name:</strong> <span id="display-name">...</span></p>
+            <p><strong>Email:</strong> <span id="display-email">...</span></p>
+            <p><strong>Status:</strong> <span id="save-status" style="color: grey;">Waiting...</span></p>
+            <button id="logout-btn" style="background-color: #dc3545;">Log Out</button>
+        </div>
+
+        <div class="section">
+            <h2>💬 Global Chat</h2>
+            <div id="chat-box"></div>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="msg-input" placeholder="Type a message...">
+                <button id="send-btn">Send</button>
+            </div>
+        </div>
+
+    </div>
+
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com";
-        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc } from "https://www.gstatic.com";
-        window.onerror = function(message, source, lineno, colno, error) {
-          alert("ERROR: " + message + "\nLine: " + lineno);
-    };
-        // Function to print errors to the screen
-        function logToScreen(msg) {
-          const box = document.getElementById('screen-console');
-          box.innerHTML += `<div>> ${msg}</div>`;
-          box.scrollTop = box.scrollHeight;
-        }
+        // 1. Import Auth and Firestore
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, addDoc, collection, onSnapshot, query, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // Catch standard code errors
-        window.onerror = (m, s, l) => logToScreen(`CODE ERROR: ${m} at line ${l}`);
-
-        // Catch Firebase specific errors
-        window.onunhandledrejection = (e) => logToScreen(`FIREBASE ERROR: ${e.reason.message}`);
-
-        logToScreen("Debug Mode Active.");
-
-
-        // Catch Firebase specific errors
-        window.addEventListener("unhandledrejection", function(event) {
-          alert("FIREBASE ERROR: " + event.reason.message);
-    });
-
-
-        // 1. SETUP - Replace with your Config from Firebase Project Settings
+        // 2. YOUR CONFIGURATION
         const firebaseConfig = {
-          apiKey: "AIzaSyAhXmz78lZyyiEO0q1y55xZP6fYrrXiEP0",
-          authDomain: "arseck.firebaseapp.com",
-          projectId: "arseck",
-          storageBucket: "arseck.firebasestorage.app",
-          messagingSenderId: "48055621631",
-          appId: "1:48055621631:web:402bb61adf52155a90b9ca",
-          measurementId: "G-W4EBXTWH2T"
-
+            apiKey: "AIzaSyAhXmz78lZyyiEO0q1y55xZP6fYrrXiEP0",
+            authDomain: "arseck.firebaseapp.com",
+            projectId: "arseck", // IMPORTANT: Must be correct for Firestore
+            storageBucket: "arseck.firebasestorage.app",
+            messagingSenderId: "48055621631",
+            appId: "1:48055621631:web:402bb61adf52155a90b9ca"
         };
 
+        // 3. Initialize
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth();
-        const db = getFirestore();
+        const auth = getAuth(app);
+        const db = getFirestore(app); // Note: We use getFirestore now
         const provider = new GoogleAuthProvider();
 
-        // 2. STEALTH: Open in about:blank to hide from history/extensions
-        window.cloakSite = () => {
-            const win = window.open();
-            const iframe = win.document.createElement('iframe');
-            iframe.style = "position:fixed; top:0; left:0; width:100%; height:100%; border:none;";
-            iframe.src = window.location.href;
-            win.document.body.appendChild(iframe);
-            window.location.replace("https://google.com"); // Leave "decoy" behind
-        };
+        // DOM Elements
+        const loginScreen = document.getElementById('login-screen');
+        const appInterface = document.getElementById('app-interface');
+        const chatBox = document.getElementById('chat-box');
+        const msgInput = document.getElementById('msg-input');
+        
+        let currentUser = null;
 
-        // 3. LOGIN LOGIC
-        document.getElementById('login-btn').onclick = () => signInWithPopup(auth, provider);
+        // --- AUTH LOGIC ---
+        
+        document.getElementById('login-btn').addEventListener('click', () => {
+            signInWithPopup(auth, provider).catch(err => alert(err.message));
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            signOut(auth);
+        });
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('app').style.display = 'block';
+                currentUser = user;
+                loginScreen.style.display = 'none';
+                appInterface.style.display = 'block';
                 
-                // SYNC PROFILE & FRIENDS
-                // This automatically creates the "users" collection
-                setDoc(doc(db, "users", user.uid), {
-                    name: user.displayName,
-                    lastSeen: serverTimestamp()
-                }, { merge: true });
+                // Update UI
+                document.getElementById('display-name').innerText = user.displayName;
+                document.getElementById('display-email').innerText = user.email;
 
-                // LOAD CHAT (Automatically creates "global_chat" collection)
-                const q = query(collection(db, "global_chat"), orderBy("timestamp", "asc"));
-                onSnapshot(q, (snap) => {
-                    const box = document.getElementById('chat-box');
-                    box.innerHTML = snap.docs.map(d => `<p><b>${d.data().name}:</b> ${d.data().text}</p>`).join('');
-                    box.scrollTop = box.scrollHeight;
-                });
+                // 1. Run Profile Logic (Matches /users/{userId})
+                saveUserProfile(user);
+
+                // 2. Run Chat Logic (Matches /chats/{chatId})
+                loadChatMessages();
+            } else {
+                currentUser = null;
+                loginScreen.style.display = 'block';
+                appInterface.style.display = 'none';
             }
         });
 
-        // 4. SEND MESSAGE
-        window.send = async () => {
-            const input = document.getElementById('msg');
-            if (!input.value) return;
-            await addDoc(collection(db, "global_chat"), {
-                name: auth.currentUser.displayName,
-                text: input.value,
-                timestamp: serverTimestamp()
-            });
-            input.value = "";
-        };
-        <div id="screen-console" style="background:#000; color:#0f0; font-family:monospace; padding:10px; height:150px; overflow-y:scroll; border-top:5px solid #333;">
-          System Ready... (Errors will appear here)
-        </div>
+        // --- FIRESTORE LOGIC 1: USER PROFILE ---
+        // Matches rule: allow write: if request.auth.uid == userId
+        async function saveUserProfile(user) {
+            const statusSpan = document.getElementById('save-status');
+            statusSpan.innerText = "Syncing profile to Firestore...";
+            
+            try {
+                // We reference the document: users -> [The User's ID]
+                const userRef = doc(db, "users", user.uid);
+                
+                // setDoc overwrites/updates the data
+                await setDoc(userRef, {
+                    name: user.displayName,
+                    email: user.email,
+                    lastLogin: serverTimestamp(),
+                    photoURL: user.photoURL
+                }, { merge: true }); // merge: true keeps old fields if they exist
 
+                statusSpan.innerText = "✅ Profile synced securely.";
+                statusSpan.style.color = "green";
+            } catch (error) {
+                console.error("Error saving profile:", error);
+                statusSpan.innerText = "❌ Error syncing profile.";
+                statusSpan.style.color = "red";
+            }
+        }
+
+        // --- FIRESTORE LOGIC 2: CHAT ---
+        // Matches rule: match /chats/{chatId} allow read, write...
+        
+        // A. Sending Messages
+        document.getElementById('send-btn').addEventListener('click', sendMessage);
+        
+        async function sendMessage() {
+            const text = msgInput.value;
+            if (text.trim() === "") return;
+
+            try {
+                // Add a new document to the "chats" collection
+                await addDoc(collection(db, "chats"), {
+                    text: text,
+                    sender: currentUser.displayName,
+                    uid: currentUser.uid,
+                    createdAt: serverTimestamp()
+                });
+                msgInput.value = ""; // Clear input
+            } catch (error) {
+                console.error("Error sending message:", error);
+            }
+        }
+
+        // B. Listening for Messages (Real-time)
+        function loadChatMessages() {
+            const chatsRef = collection(db, "chats");
+            // Query: Order by time, limit to last 50
+            const q = query(chatsRef, orderBy("createdAt", "asc"), limit(50));
+
+            onSnapshot(q, (snapshot) => {
+                chatBox.innerHTML = ""; // Clear current list
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const div = document.createElement("div");
+                    div.classList.add("message");
+                    
+                    // Style differently if it's my own message
+                    if (data.uid === currentUser.uid) {
+                        div.classList.add("my-message");
+                        div.innerText = `${data.text}`;
+                    } else {
+                        div.innerText = `${data.sender}: ${data.text}`;
+                    }
+                    
+                    chatBox.appendChild(div);
+                });
+                // Auto-scroll to bottom
+                chatBox.scrollTop = chatBox.scrollHeight;
+            });
+        }
     </script>
 </body>
 </html>
